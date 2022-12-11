@@ -36,7 +36,7 @@
       failed_when: subnet_no | int  > max | int
       register: check
 
-  tasks:
+   tasks:
 
     - name: "Create VPC"
 
@@ -61,3 +61,90 @@
       set_fact:
         priv_net: "{{ priv_net | default([]) + [ vpc_cidr_block | ipsubnet(20, item + subnet_no | int) ] }}"
       loop: "{{range (0, 0 + subnet_no | int) | list}}"
+
+    - name: "Create public subnet dictionary"
+
+      set_fact:
+        pub_dict: "{{ pub_dict | default([]) + [dict(az=item[0], cidr=item[1])] }}"
+      loop: "{{ list_var | zip(pub_net) | list }}"
+
+    - name: "Create Public subnets"
+
+      ec2_vpc_subnet:
+        state: present
+        vpc_id: "{{ vpc_info.vpc.id }}"
+        region: "{{ aws_region }}"
+        az: "{{ item.az }}"
+        cidr: "{{ item.cidr }}"
+        map_public: true
+        tags:
+          Name: "public"
+      loop: "{{pub_dict}}"
+
+    - name: "Create private subnet dictionary"
+
+      set_fact:
+        priv_dict: "{{ priv_dict | default([]) + [dict(az=item[0], cidr=item[1])] }}"
+      loop: "{{ list_var | zip(priv_net) | list }}"
+
+    - name: "Create Private subnets"
+
+      ec2_vpc_subnet:
+        state: present
+        vpc_id: "{{ vpc_info.vpc.id }}"
+        region: "{{ aws_region }}"
+        az: "{{ item.az }}"
+        cidr: "{{ item.cidr }}"
+        tags:
+          Name: "private"
+      loop: "{{priv_dict}}"
+
+    - name: "Create Internet gateway"
+
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc_info.vpc.id }}"
+        region: "{{ aws_region }}"
+        state: present
+      register: igw_info
+
+    - name: "Set up public subnet route table"
+
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc_info.vpc.id }}"
+        region: "{{ aws_region }}"
+        subnets: "{{pub_net}}"
+        routes:
+          - dest: "0.0.0.0/0"
+            gateway_id: "{{ igw_info.gateway_id }}"
+        tags:
+          Name: Public-rtb
+
+    - name: "Gather public subnet 0 info for NAT"
+
+      ec2_vpc_subnet_info:
+        region: "{{ aws_region }}"
+        filters:
+          vpc-id: "{{ vpc_info.vpc.id }}"
+          "tag:Name": public
+      register: pubnet_info
+
+    - name: "Create NAT gateway for private network"
+
+      ec2_vpc_nat_gateway:
+        if_exist_do_not_create: yes
+        state: present
+        subnet_id: "{{pubnet_info.subnets.0.id}}"
+        region: "{{ aws_region }}"
+      register: nat_gw_info
+
+    - name: "Set up private subnet route table"
+
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc_info.vpc.id }}"
+        region: "{{ aws_region }}"
+        subnets: "{{priv_net}}"
+        routes:
+          - dest: "0.0.0.0/0"
+            gateway_id: "{{ nat_gw_info.nat_gateway_id }}"
+        tags:
+          Name: Private-rtb
