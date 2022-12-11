@@ -9,7 +9,7 @@ Here I am sharing an ansible playbook that will create a custom VPC(Virtual Priv
 - An EC2 instance as Ansible master 
 - IAM role attached to the Ansible master with required privileges to execute the intended tasks
 
-## IMPORTENT
+## IMPORTANT
 ## This setup will cost you money if left running for long as the VPC includes elastic IP and NAT gateway.
 __ __ __
 
