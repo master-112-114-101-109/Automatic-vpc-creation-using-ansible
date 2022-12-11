@@ -1,0 +1,63 @@
+---
+- name: "Amazon VPC Creation"
+  hosts: localhost
+  vars_files:
+    - vpc.vars
+  pre_tasks:
+
+    - name: "Gather information about all availability zones"
+
+      aws_az_info:
+        region: "{{ aws_region }}"
+      register: az_info
+
+    - name: "Create list of AZ"
+
+      set_fact:
+        list_var: "{{ list_var | default([]) + [ az_info.availability_zones[ (item | int) ].zone_name ] }}"
+      loop: "{{range(0,az_info.availability_zones | length | int )}}"
+
+    - name: "Number of subnets to create"
+      set_fact:
+        subnet_no: "{{ list_var | length | int *2 | int }}"
+    - debug:
+        msg: " number of subnets to create : '{{ subnet_no }}' "
+
+    - name: "Get the number of subnets a given subnet can be split into"
+
+      set_fact:
+        max: "{{ vpc_cidr_block  | ipsubnet(20) }}"
+    - debug:
+        msg: "maximum nuber of subnets are {{max}}"
+
+    - name: "Fail when subnet count doesn't match"
+      fail:
+        msg: "The number of subnets to create is not less than or equal to the maximum number of allowed subnets in this region "
+      failed_when: subnet_no | int  > max | int
+      register: check
+
+  tasks:
+
+    - name: "Create VPC"
+
+      ec2_vpc_net:
+        name: "{{ vpc_name }}"
+        cidr_block: "{{ vpc_cidr_block }}"
+        region: "{{ aws_region }}"
+      register: vpc_info
+    - name: Gather information about all availability zones
+      aws_az_info:
+        region: "{{ aws_region }}"
+      register: az_info
+
+    - name: "Generate public subnet"
+
+      set_fact:
+        pub_net: "{{ pub_net | default([])  + [ vpc_cidr_block | ipsubnet(20, item) ] }}"
+      loop: "{{range (0, 0 + subnet_no | int) | list}}"
+
+    - name: "Generate private subnet"
+
+      set_fact:
+        priv_net: "{{ priv_net | default([]) + [ vpc_cidr_block | ipsubnet(20, item + subnet_no | int) ] }}"
+      loop: "{{range (0, 0 + subnet_no | int) | list}}"
