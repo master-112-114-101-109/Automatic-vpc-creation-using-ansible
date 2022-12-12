@@ -1,3 +1,4 @@
+
 ---
 - name: "Amazon VPC Creation"
   hosts: localhost
@@ -36,7 +37,7 @@
       failed_when: subnet_no | int  > max | int
       register: check
 
-   tasks:
+  tasks:
 
     - name: "Create VPC"
 
@@ -137,6 +138,11 @@
         region: "{{ aws_region }}"
       register: nat_gw_info
 
+    - name: "Sleep for 180 seconds and continue with play"
+      wait_for:
+        timeout: 180
+      delegate_to: localhost
+
     - name: "Set up private subnet route table"
 
       ec2_vpc_route_table:
@@ -148,3 +154,4 @@
             gateway_id: "{{ nat_gw_info.nat_gateway_id }}"
         tags:
           Name: Private-rtb
+
